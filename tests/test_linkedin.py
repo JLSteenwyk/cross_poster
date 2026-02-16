@@ -1,0 +1,78 @@
+"""Tests for the LinkedIn platform module."""
+
+from unittest.mock import MagicMock, patch, mock_open
+import pytest
+from platforms.linkedin import LinkedInPlatform
+
+
+class TestLinkedInPlatform:
+    def test_init_missing_credentials_raises(self):
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(ValueError, match="LinkedIn credentials required"):
+                LinkedInPlatform()
+
+    @patch("platforms.linkedin.requests")
+    def test_post_single(self, mock_requests):
+        mock_userinfo_resp = MagicMock()
+        mock_userinfo_resp.status_code = 200
+        mock_userinfo_resp.json.return_value = {"sub": "abc123"}
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 201
+
+        mock_requests.get.return_value = mock_userinfo_resp
+        mock_requests.post.return_value = mock_post_resp
+
+        platform = LinkedInPlatform(
+            client_id="cid", client_secret="csec",
+            access_token="tok", refresh_token="rtok"
+        )
+        result = platform.post(["Hello LinkedIn!"])
+
+        assert result["success"] is True
+
+    @patch("platforms.linkedin.requests")
+    def test_post_joins_parts(self, mock_requests):
+        """LinkedIn doesn't support threads, so parts should be joined."""
+        mock_userinfo_resp = MagicMock()
+        mock_userinfo_resp.status_code = 200
+        mock_userinfo_resp.json.return_value = {"sub": "abc123"}
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 201
+
+        mock_requests.get.return_value = mock_userinfo_resp
+        mock_requests.post.return_value = mock_post_resp
+
+        platform = LinkedInPlatform(
+            client_id="cid", client_secret="csec",
+            access_token="tok", refresh_token="rtok"
+        )
+        result = platform.post(["Part 1.", "Part 2."])
+
+        assert result["success"] is True
+        call_args = mock_requests.post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert "Part 1." in body["commentary"]
+        assert "Part 2." in body["commentary"]
+
+    @patch("platforms.linkedin.requests")
+    def test_post_failure(self, mock_requests):
+        mock_userinfo_resp = MagicMock()
+        mock_userinfo_resp.status_code = 200
+        mock_userinfo_resp.json.return_value = {"sub": "abc123"}
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 403
+        mock_post_resp.text = "Forbidden"
+
+        mock_requests.get.return_value = mock_userinfo_resp
+        mock_requests.post.return_value = mock_post_resp
+
+        platform = LinkedInPlatform(
+            client_id="cid", client_secret="csec",
+            access_token="tok", refresh_token="rtok"
+        )
+        result = platform.post(["Hello."])
+
+        assert result["success"] is False

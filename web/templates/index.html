@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cross-Poster</title>
+  <link rel="stylesheet" href="{{ url_for('main.static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header>
+  <h1>Cross-Poster</h1>
+</header>
+
+<main>
+  <!-- Left column: compose -->
+  <section class="compose">
+    <div class="platforms">
+      <label><input type="checkbox" name="platform" value="twitter" checked> Twitter</label>
+      <label><input type="checkbox" name="platform" value="bluesky" checked> BlueSky</label>
+      <label><input type="checkbox" name="platform" value="linkedin" checked> LinkedIn</label>
+    </div>
+
+    <textarea id="compose-text" placeholder="Write your post here..."></textarea>
+
+    <div class="counters" id="counters"></div>
+
+    <div class="actions">
+      <div class="image-controls">
+        <label class="attach-btn" id="attach-btn">
+          Attach Image
+          <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif" hidden>
+        </label>
+        <span id="image-name"></span>
+        <button id="clear-image" class="clear-btn" hidden>Clear</button>
+      </div>
+
+      <button id="post-btn" disabled>Post</button>
+    </div>
+
+    <div id="status" class="status"></div>
+  </section>
+
+  <!-- Right column: preview -->
+  <section class="preview">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-platform="twitter">Twitter</button>
+      <button class="tab" data-platform="bluesky">BlueSky</button>
+      <button class="tab" data-platform="linkedin">LinkedIn</button>
+    </div>
+
+    <div class="preview-content" id="preview-content">
+      <p class="empty-state">Start typing to see a preview...</p>
+    </div>
+  </section>
+</main>
+
+<!-- LinkedIn OAuth status from server-side redirect -->
+{% if linkedin_status is defined and linkedin_status %}
+<script>
+  window.__linkedinStatus = "{{ linkedin_status }}";
+  window.__linkedinMessage = "{{ linkedin_message | default('') }}";
+</script>
+{% endif %}
+
+<script src="{{ url_for('main.static', filename='js/app.js') }}"></script>
+</body>
+</html>

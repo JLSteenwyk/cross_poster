@@ -1,0 +1,611 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #f5f6f8;
+  color: #1a1a2e;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* === Header === */
+header {
+  background: #fff;
+  border-bottom: 1px solid #e2e4e9;
+  padding: 12px 24px;
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* === Main Layout === */
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 0 20px;
+}
+
+/* === Compose Column === */
+.compose {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e2e4e9;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.platforms {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.platforms label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3a3a5c;
+  cursor: pointer;
+  user-select: none;
+}
+
+.platforms input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #4a6cf7;
+}
+
+#compose-text {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  border: 1px solid #e2e4e9;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  color: #1a1a2e;
+  transition: border-color 0.15s;
+}
+
+#compose-text:focus {
+  outline: none;
+  border-color: #4a6cf7;
+  box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1);
+}
+
+#compose-text::placeholder {
+  color: #a0a3b1;
+}
+
+/* === Counters === */
+.counters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #6b6e80;
+}
+
+.counters .counter {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f0f1f4;
+}
+
+.counters .counter.over {
+  color: #d63031;
+  background: #ffeaea;
+  font-weight: 600;
+}
+
+/* === Actions Row === */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.image-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attach-btn {
+  display: inline-block;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3a3a5c;
+  background: #f0f1f4;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.attach-btn:hover {
+  background: #e4e6eb;
+}
+
+#image-name {
+  font-size: 12px;
+  color: #6b6e80;
+}
+
+.clear-btn {
+  font-size: 12px;
+  color: #d63031;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.clear-btn:hover {
+  text-decoration: underline;
+}
+
+#post-btn {
+  padding: 8px 28px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: #4a6cf7;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#post-btn:hover:not(:disabled) {
+  background: #3b5de7;
+}
+
+#post-btn:disabled {
+  background: #c8ccd8;
+  cursor: not-allowed;
+}
+
+/* === Status === */
+.status {
+  font-size: 13px;
+  min-height: 20px;
+}
+
+.status .platform-result {
+  padding: 4px 0;
+}
+
+.status .platform-result.success {
+  color: #00b894;
+}
+
+.status .platform-result.error {
+  color: #d63031;
+}
+
+.status .posting {
+  color: #6b6e80;
+}
+
+/* === Preview Column === */
+.preview {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e2e4e9;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 100px);
+  overflow: hidden;
+}
+
+/* === Tabs === */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e2e4e9;
+  padding-bottom: 0;
+}
+
+.tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b6e80;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: #3a3a5c;
+}
+
+.tab.active {
+  color: #4a6cf7;
+  border-bottom-color: #4a6cf7;
+}
+
+.tab.disabled {
+  color: #c8ccd8;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* === Preview Content === */
+.preview-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty-state {
+  color: #a0a3b1;
+  font-size: 14px;
+  text-align: center;
+  padding: 40px 0;
+}
+
+.preview-info {
+  font-size: 12px;
+  color: #6b6e80;
+}
+
+/* === Twitter Mockup === */
+.twitter-thread {
+  display: flex;
+  flex-direction: column;
+}
+
+.twitter-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid #eff3f4;
+  position: relative;
+}
+
+.twitter-card:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.twitter-card:last-child {
+  border-radius: 0 0 12px 12px;
+}
+
+.twitter-card:only-child {
+  border-radius: 12px;
+}
+
+.twitter-card + .twitter-card {
+  border-top: none;
+}
+
+.twitter-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.twitter-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #1d9bf0;
+  flex-shrink: 0;
+}
+
+.twitter-connector {
+  width: 2px;
+  flex: 1;
+  background: #cfd9de;
+  margin-top: 4px;
+}
+
+.twitter-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.twitter-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.twitter-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f1419;
+}
+
+.twitter-handle {
+  font-size: 15px;
+  color: #536471;
+}
+
+.twitter-time {
+  font-size: 15px;
+  color: #536471;
+}
+
+.twitter-body {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #0f1419;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 12px;
+}
+
+.twitter-actions {
+  display: flex;
+  justify-content: space-between;
+  max-width: 300px;
+}
+
+.twitter-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #536471;
+  font-size: 13px;
+}
+
+.twitter-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+.twitter-image {
+  width: 100%;
+  border-radius: 16px;
+  margin-bottom: 12px;
+}
+
+/* === BlueSky Mockup === */
+.bluesky-thread {
+  display: flex;
+  flex-direction: column;
+}
+
+.bluesky-card {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  position: relative;
+}
+
+.bluesky-card:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.bluesky-card:last-child {
+  border-radius: 0 0 12px 12px;
+}
+
+.bluesky-card:only-child {
+  border-radius: 12px;
+}
+
+.bluesky-card + .bluesky-card {
+  border-top: none;
+}
+
+.bluesky-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bluesky-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #0085ff;
+  flex-shrink: 0;
+}
+
+.bluesky-connector {
+  width: 2px;
+  flex: 1;
+  background: #d3d3d3;
+  margin-top: 4px;
+}
+
+.bluesky-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.bluesky-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.bluesky-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111;
+}
+
+.bluesky-handle {
+  font-size: 14px;
+  color: #666;
+}
+
+.bluesky-time {
+  font-size: 14px;
+  color: #666;
+}
+
+.bluesky-body {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #111;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 12px;
+}
+
+.bluesky-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.bluesky-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #666;
+  font-size: 13px;
+}
+
+.bluesky-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+.bluesky-image {
+  width: 100%;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+/* === LinkedIn Mockup === */
+.linkedin-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linkedin-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.linkedin-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.linkedin-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #0a66c2;
+  flex-shrink: 0;
+}
+
+.linkedin-header-text {
+  flex: 1;
+}
+
+.linkedin-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #191919;
+}
+
+.linkedin-subtitle {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.3;
+}
+
+.linkedin-body {
+  padding: 8px 16px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #191919;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.linkedin-engagement {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px 8px;
+  font-size: 12px;
+  color: #666;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.linkedin-engagement svg {
+  width: 16px;
+  height: 16px;
+}
+
+.linkedin-actions-row {
+  display: flex;
+  justify-content: space-around;
+  padding: 4px 8px;
+}
+
+.linkedin-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px;
+  color: #666;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.linkedin-action-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.linkedin-image {
+  width: 100%;
+}
+
+/* === Responsive === */
+@media (max-width: 768px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  .preview {
+    max-height: none;
+  }
+}

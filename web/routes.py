@@ -1,0 +1,219 @@
+"""Route handlers for Cross-Poster web app."""
+
+import os
+from pathlib import Path
+
+import grapheme
+from flask import Blueprint, render_template, request, jsonify, redirect
+
+from core.splitter import split_for_platform, TWITTER, BLUESKY, LINKEDIN
+from core.media import validate_image, resize_for_platform
+from platforms.twitter import TwitterPlatform
+from platforms.bluesky import BlueskyPlatform
+from platforms.linkedin import LinkedInPlatform
+
+_web_dir = Path(__file__).parent
+
+bp = Blueprint(
+    "main",
+    __name__,
+    template_folder=str(_web_dir / "templates"),
+    static_folder=str(_web_dir / "static"),
+    static_url_path="/static",
+)
+
+PLATFORM_CONFIGS = {
+    "twitter": TWITTER,
+    "bluesky": BLUESKY,
+    "linkedin": LINKEDIN,
+}
+
+PLATFORM_DISPLAY = {
+    "twitter": "Twitter",
+    "bluesky": "BlueSky",
+    "linkedin": "LinkedIn",
+}
+
+
+@bp.route("/")
+def index():
+    return render_template("index.html")
+
+
+@bp.route("/api/preview", methods=["POST"])
+def preview():
+    """Return thread split preview for all requested platforms."""
+    data = request.get_json()
+    text = data.get("text", "")
+    platforms = data.get("platforms", [])
+
+    char_count = len(text)
+    grapheme_count = grapheme.length(text)
+
+    result = {}
+    for key in platforms:
+        config = PLATFORM_CONFIGS.get(key)
+        if not config:
+            continue
+
+        parts = split_for_platform(text, config)
+
+        count = grapheme_count if config.use_graphemes else char_count
+        limit = config.char_limit
+
+        result[key] = {
+            "parts": parts,
+            "count": count,
+            "limit": limit,
+            "over": limit is not None and count > limit,
+        }
+
+    return jsonify(result)
+
+
+@bp.route("/api/post", methods=["POST"])
+def post():
+    """Post to all enabled platforms. Accepts multipart/form-data."""
+    text = request.form.get("text", "").strip()
+    platforms = request.form.getlist("platforms")
+    image_file = request.files.get("image")
+
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+    if not platforms:
+        return jsonify({"error": "No platforms selected"}), 400
+
+    image_bytes = None
+    if image_file and image_file.filename:
+        image_bytes = image_file.read()
+        if not validate_image(image_bytes):
+            return jsonify({"error": "Invalid image file"}), 400
+
+    results = {}
+    for key in platforms:
+        config = PLATFORM_CONFIGS.get(key)
+        if not config:
+            results[key] = {"success": False, "error": "Unknown platform"}
+            continue
+
+        parts = split_for_platform(text, config)
+
+        platform_image = None
+        if image_bytes:
+            platform_image = resize_for_platform(image_bytes, key)
+
+        try:
+            if key == "twitter":
+                platform = TwitterPlatform()
+                result = platform.post(parts, image_bytes=platform_image)
+            elif key == "bluesky":
+                platform = BlueskyPlatform()
+                result = platform.post(parts, image_bytes=platform_image)
+            elif key == "linkedin":
+                platform = LinkedInPlatform()
+                if not platform.access_token:
+                    result = {
+                        "success": False,
+                        "error": "No access token. Authorize LinkedIn first.",
+                    }
+                else:
+                    result = platform.post(parts, image_bytes=platform_image)
+            else:
+                result = {"success": False, "error": "Unknown platform"}
+        except Exception as e:
+            result = {"success": False, "error": str(e)}
+
+        results[key] = result
+
+    return jsonify(results)
+
+
+@bp.route("/api/linkedin/authorize")
+def linkedin_authorize():
+    """Redirect the user to LinkedIn's OAuth authorization page."""
+    try:
+        platform = LinkedInPlatform()
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    auth_url = (
+        f"https://www.linkedin.com/oauth/v2/authorization"
+        f"?response_type=code"
+        f"&client_id={platform.client_id}"
+        f"&redirect_uri={platform.REDIRECT_URI}"
+        f"&scope=openid%20profile%20email%20w_member_social"
+    )
+    return redirect(auth_url)
+
+
+@bp.route("/callback/linkedin")
+def linkedin_callback():
+    """Handle LinkedIn OAuth callback — exchange code for tokens."""
+    import requests as http_requests
+
+    code = request.args.get("code")
+    error = request.args.get("error")
+
+    if error or not code:
+        return render_template(
+            "index.html",
+            linkedin_status="error",
+            linkedin_message=error or "No authorization code received.",
+        )
+
+    try:
+        platform = LinkedInPlatform()
+    except ValueError as e:
+        return render_template(
+            "index.html",
+            linkedin_status="error",
+            linkedin_message=str(e),
+        )
+
+    resp = http_requests.post(
+        "https://www.linkedin.com/oauth/v2/accessToken",
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": platform.client_id,
+            "client_secret": platform.client_secret,
+            "redirect_uri": platform.REDIRECT_URI,
+        },
+    )
+
+    if resp.status_code != 200:
+        return render_template(
+            "index.html",
+            linkedin_status="error",
+            linkedin_message=f"Token exchange failed: {resp.text}",
+        )
+
+    tokens = resp.json()
+    platform.access_token = tokens["access_token"]
+    platform.refresh_token = tokens.get("refresh_token", "")
+    platform._save_tokens()
+
+    return render_template(
+        "index.html",
+        linkedin_status="success",
+        linkedin_message="LinkedIn authorized successfully!",
+    )
+
+
+@bp.route("/api/linkedin/status")
+def linkedin_status():
+    """Check if LinkedIn access token exists."""
+    token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
+    return jsonify({"authorized": bool(token)})
+
+
+@bp.route("/api/profile")
+def profile():
+    """Return display info for preview mockups."""
+    bluesky_username = os.environ.get("BLUESKY_USERNAME", "")
+    return jsonify({
+        "displayName": os.environ.get("DISPLAY_NAME", "Your Name"),
+        "twitterHandle": os.environ.get("TWITTER_HANDLE", "@you"),
+        "blueskyHandle": f"@{bluesky_username}" if bluesky_username else "@you.bsky.social",
+        "linkedinHeadline": os.environ.get("LINKEDIN_HEADLINE", "Your headline"),
+    })

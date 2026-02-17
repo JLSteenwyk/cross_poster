@@ -89,3 +89,13 @@ class TestSplitForPlatform:
         assert "First sentence" in joined
         assert "Second sentence" in joined
         assert "Third sentence" in joined
+
+    def test_preserves_newlines_when_splitting(self):
+        text = ("Line one.\n\nLine two with spacing.\nLine three. " * 12).strip()
+        parts = split_for_platform(text, TWITTER)
+        assert len(parts) > 1
+        joined = "\n".join(
+            p.rsplit(" (", 1)[0] if p.endswith(")") else p
+            for p in parts
+        )
+        assert "Line one.\n\nLine two with spacing.\nLine three." in joined

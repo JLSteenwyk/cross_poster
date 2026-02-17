@@ -68,6 +68,11 @@ Optional profile/display keys (used for preview mockups only):
 - `TWITTER_HANDLE`
 - `LINKEDIN_HEADLINE`
 
+Optional AI editor keys:
+
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (default: `gpt-4.1-mini`)
+
 Formatting rules for `.env`:
 
 - Use `KEY=value` format, one per line.
@@ -94,7 +99,8 @@ Opens at [http://localhost:5001](http://localhost:5001).
 2. Type your message in the compose area.
 3. Optionally attach an image (appears on the first post in a thread).
 4. Preview your post across platform tabs — the character counters update live.
-5. Click **Post** to publish to all selected platforms.
+5. Optionally click **AI Enhance** to rewrite your draft in a casual-professional voice.
+6. Click **Post** to publish to all selected platforms.
 
 For LinkedIn, click **Authorize LinkedIn** the first time to complete the OAuth flow.
 

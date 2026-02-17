@@ -1,9 +1,13 @@
 """Route handlers for Cross-Poster web app."""
 
 import os
+from collections import defaultdict, deque
 from pathlib import Path
+from threading import Lock
+from time import time
 
 import grapheme
+import requests as http_requests
 from flask import Blueprint, render_template, request, jsonify, redirect
 
 from core.splitter import split_for_platform, TWITTER, BLUESKY, LINKEDIN
@@ -33,6 +37,84 @@ PLATFORM_DISPLAY = {
     "bluesky": "BlueSky",
     "linkedin": "LinkedIn",
 }
+
+ENHANCE_MAX_CHARS = 6000
+ENHANCE_RATE_LIMIT = 20  # requests
+ENHANCE_WINDOW_SECONDS = 60  # per minute
+_enhance_rate_bucket = defaultdict(deque)
+_enhance_rate_lock = Lock()
+
+
+def _enhance_text_with_ai(text: str) -> str:
+    """Enhance text with OpenAI while preserving intent and platform fit."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Missing OPENAI_API_KEY in environment.")
+
+    model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+
+    system_prompt = (
+        "You are a social media editor. Rewrite user text for a strong social post. "
+        "Keep the meaning, facts, and intent. Keep concise, professional, and casual tone "
+        "with a slight emphasis on casual warmth. Sound human, not generic AI. "
+        "Avoid em dashes and avoid overused AI phrasing. "
+        "Use plain punctuation, short sentences, and clean line breaks when useful. "
+        "Do not add hashtags unless already present. Do not invent facts. "
+        "Return only the revised post text."
+    )
+
+    resp = http_requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        "Rewrite this post text:\n\n"
+                        f"{text}"
+                    ),
+                },
+            ],
+        },
+        timeout=30,
+    )
+
+    if resp.status_code != 200:
+        raise RuntimeError("Enhancement request failed at provider.")
+
+    data = resp.json()
+    choices = data.get("choices", [])
+    if not choices:
+        raise RuntimeError("Enhancement failed: empty model response.")
+
+    content = choices[0].get("message", {}).get("content", "")
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("Enhancement failed: no text returned.")
+
+    return content.strip()
+
+
+def _is_enhance_rate_limited(client_ip: str) -> bool:
+    """Simple in-memory rolling-window rate limit for /api/enhance."""
+    now = time()
+    cutoff = now - ENHANCE_WINDOW_SECONDS
+
+    with _enhance_rate_lock:
+        bucket = _enhance_rate_bucket[client_ip]
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+
+        if len(bucket) >= ENHANCE_RATE_LIMIT:
+            return True
+
+        bucket.append(now)
+        return False
 
 
 @bp.route("/")
@@ -128,6 +210,33 @@ def post():
     return jsonify(results)
 
 
+@bp.route("/api/enhance", methods=["POST"])
+def enhance():
+    """Enhance post copy using AI editing suggestions."""
+    data = request.get_json() or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+    if len(text) > ENHANCE_MAX_CHARS:
+        return jsonify({
+            "error": f"Text too long for enhancement. Max {ENHANCE_MAX_CHARS} characters."
+        }), 400
+
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    client_ip = client_ip.split(",")[0].strip() or "unknown"
+    if _is_enhance_rate_limited(client_ip):
+        return jsonify({"error": "Too many enhancement requests. Please wait and try again."}), 429
+
+    try:
+        enhanced = _enhance_text_with_ai(text)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+    return jsonify({"text": enhanced})
+
+
 @bp.route("/api/linkedin/authorize")
 def linkedin_authorize():
     """Redirect the user to LinkedIn's OAuth authorization page."""
@@ -149,8 +258,6 @@ def linkedin_authorize():
 @bp.route("/callback/linkedin")
 def linkedin_callback():
     """Handle LinkedIn OAuth callback — exchange code for tokens."""
-    import requests as http_requests
-
     code = request.args.get("code")
     error = request.args.get("error")
 
@@ -179,6 +286,7 @@ def linkedin_callback():
             "client_secret": platform.client_secret,
             "redirect_uri": platform.REDIRECT_URI,
         },
+        timeout=20,
     )
 
     if resp.status_code != 200:

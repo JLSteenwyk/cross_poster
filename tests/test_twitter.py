@@ -22,7 +22,9 @@ class TestTwitterPlatform:
             access_token="t", access_token_secret="ts"
         )
         result = platform.post(["Hello world."])
-        assert result == {"success": True, "ids": ["123"]}
+        assert result["success"] is True
+        assert result["ids"] == ["123"]
+        assert result["urls"] == ["https://x.com/i/web/status/123"]
 
     @patch("platforms.twitter.tweepy")
     def test_post_thread(self, mock_tweepy):
@@ -38,7 +40,12 @@ class TestTwitterPlatform:
             access_token="t", access_token_secret="ts"
         )
         result = platform.post(["Part 1.", "Part 2."])
-        assert result == {"success": True, "ids": ["1", "2"]}
+        assert result["success"] is True
+        assert result["ids"] == ["1", "2"]
+        assert result["urls"] == [
+            "https://x.com/i/web/status/1",
+            "https://x.com/i/web/status/2",
+        ]
         # Second tweet should reply to first
         calls = mock_client.create_tweet.call_args_list
         assert calls[1].kwargs.get("in_reply_to_tweet_id") == "1"

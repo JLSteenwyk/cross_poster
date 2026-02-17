@@ -1,3 +1,5 @@
+import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
+
 (function () {
   "use strict";
 
@@ -8,14 +10,28 @@
   const imageInput = document.getElementById("image-input");
   const imageNameEl = document.getElementById("image-name");
   const clearImageBtn = document.getElementById("clear-image");
+  const imageDropzone = document.getElementById("image-dropzone");
+  const imageDropzoneHint = document.getElementById("image-dropzone-hint");
+  const imageThumbnailWrap = document.getElementById("image-thumbnail-wrap");
+  const imageThumbnail = document.getElementById("image-thumbnail");
+  const emojiBtn = document.getElementById("emoji-btn");
+  const emojiPicker = document.getElementById("emoji-picker");
   const previewContent = document.getElementById("preview-content");
   const tabsContainer = document.getElementById("tabs");
+  const draftStateEl = document.getElementById("draft-state");
+  const typingMetricsEl = document.getElementById("typing-metrics");
+  const enhanceBtn = document.getElementById("enhance-btn");
+  const undoEnhanceBtn = document.getElementById("undo-enhance-btn");
+  const enhanceStateEl = document.getElementById("enhance-state");
 
   let activeTab = "twitter";
   let previewData = {};
   let debounceTimer = null;
   let selectedFile = null;
   let imagePreviewUrl = null;
+  let saveDraftTimer = null;
+  let previousTextBeforeEnhance = "";
+  let isEnhancing = false;
   let userProfile = {
     displayName: "Your Name",
     twitterHandle: "@you",
@@ -28,6 +44,7 @@
     bluesky: "BlueSky",
     linkedin: "LinkedIn",
   };
+  const DRAFT_KEY = "cross-poster-draft-v1";
 
   // --- SVG Icons ---
   const ICONS = {
@@ -92,9 +109,164 @@
 
   // --- Compose & Preview ---
   textarea.addEventListener("input", () => {
+    updateTypingMetrics();
+    queueDraftSave();
     updatePostBtn();
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(requestPreview, 300);
+  });
+
+  function updateTypingMetrics() {
+    const text = textarea.value.trim();
+    const chars = textarea.value.length;
+    const words = text ? text.split(/\s+/).length : 0;
+    typingMetricsEl.textContent = `${chars} chars · ${words} words`;
+  }
+
+  function queueDraftSave() {
+    clearTimeout(saveDraftTimer);
+    draftStateEl.textContent = "Saving draft...";
+    saveDraftTimer = setTimeout(() => {
+      localStorage.setItem(DRAFT_KEY, textarea.value);
+      const timestamp = new Date().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      draftStateEl.textContent = `Draft saved at ${timestamp}`;
+    }, 250);
+  }
+
+  // --- Emoji Picker ---
+  function normalizeForSearch(text) {
+    return (text || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function buildEmojiSections(query) {
+    const q = normalizeForSearch(query).trim();
+    const sections = [];
+
+    for (const category of EMOJI_CATEGORIES) {
+      const items = q
+        ? category.emojis.filter((emoji) => {
+            const haystack = normalizeForSearch(
+              `${category.name} ${EMOJI_KEYWORDS[emoji] || ""} ${emoji}`
+            );
+            return haystack.includes(q);
+          })
+        : category.emojis;
+
+      if (items.length > 0) {
+        sections.push({ name: category.name, emojis: items });
+      }
+    }
+
+    return sections;
+  }
+
+  function renderEmojiSections(query) {
+    const sections = buildEmojiSections(query);
+
+    if (sections.length === 0) {
+      return '<p class="emoji-no-results">No emojis matched that search.</p>';
+    }
+
+    return sections
+      .map((category) => {
+        const buttons = category.emojis
+          .map(
+            (emoji) =>
+              `<button class="emoji-option" type="button" data-emoji="${emoji}" aria-label="Insert ${emoji}">${emoji}</button>`
+          )
+          .join("");
+        return `<section class="emoji-section">
+          <h4 class="emoji-section-title">${escapeHtml(category.name)}</h4>
+          <div class="emoji-grid">${buttons}</div>
+        </section>`;
+      })
+      .join("");
+  }
+
+  function renderEmojiPicker() {
+    emojiPicker.innerHTML = `
+      <div class="emoji-picker-header">
+        <span class="emoji-picker-title">Choose an emoji</span>
+        <button class="emoji-picker-close" type="button" aria-label="Close emoji picker">✕</button>
+      </div>
+      <input id="emoji-search-input" class="emoji-search-input" type="text" placeholder="Search emoji (e.g. tea, fire, launch)">
+      <div class="emoji-picker-body" id="emoji-picker-body">${renderEmojiSections("")}</div>
+    `;
+
+    const searchInput = emojiPicker.querySelector("#emoji-search-input");
+    const body = emojiPicker.querySelector("#emoji-picker-body");
+    searchInput.addEventListener("input", () => {
+      body.innerHTML = renderEmojiSections(searchInput.value);
+    });
+  }
+
+  function closeEmojiPicker() {
+    emojiPicker.hidden = true;
+    emojiBtn.classList.remove("active");
+  }
+
+  function insertAtCursor(text) {
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const current = textarea.value;
+    textarea.value = current.slice(0, start) + text + current.slice(end);
+    const nextPos = start + text.length;
+    textarea.selectionStart = nextPos;
+    textarea.selectionEnd = nextPos;
+    textarea.focus();
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  renderEmojiPicker();
+
+  emojiBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (emojiPicker.hidden) {
+      emojiPicker.hidden = false;
+      emojiBtn.classList.add("active");
+      const searchInput = emojiPicker.querySelector("#emoji-search-input");
+      const body = emojiPicker.querySelector("#emoji-picker-body");
+      if (searchInput && body) {
+        searchInput.value = "";
+        body.innerHTML = renderEmojiSections("");
+        searchInput.focus();
+      }
+      return;
+    }
+    closeEmojiPicker();
+  });
+
+  emojiPicker.addEventListener("click", (e) => {
+    if (e.target.closest(".emoji-picker-close")) {
+      closeEmojiPicker();
+      return;
+    }
+    const option = e.target.closest(".emoji-option");
+    if (!option) return;
+    insertAtCursor(option.dataset.emoji);
+    closeEmojiPicker();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (
+      !emojiPicker.hidden &&
+      !emojiPicker.contains(e.target) &&
+      !emojiBtn.contains(e.target)
+    ) {
+      closeEmojiPicker();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !emojiPicker.hidden) {
+      closeEmojiPicker();
+    }
   });
 
   function updatePostBtn() {
@@ -102,6 +274,67 @@
     const hasPlatforms = getEnabledPlatforms().length > 0;
     postBtn.disabled = !(hasText && hasPlatforms);
   }
+
+  function setEnhanceState(message, isError) {
+    enhanceStateEl.textContent = message || "";
+    enhanceStateEl.classList.toggle("error", Boolean(isError));
+  }
+
+  function enhanceText() {
+    const original = textarea.value.trim();
+    if (!original || isEnhancing) return;
+
+    isEnhancing = true;
+    enhanceBtn.disabled = true;
+    enhanceBtn.textContent = "Enhancing...";
+    setEnhanceState("Polishing tone for social media...", false);
+
+    fetch("/api/enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: original }),
+    })
+      .then((r) =>
+        r.json().then((data) => ({
+          ok: r.ok,
+          data,
+        }))
+      )
+      .then(({ ok, data }) => {
+        if (!ok) {
+          throw new Error(data.error || "Enhancement failed");
+        }
+        const enhanced = (data.text || "").trim();
+        if (!enhanced) {
+          throw new Error("Enhancement returned empty text");
+        }
+
+        previousTextBeforeEnhance = textarea.value;
+        textarea.value = enhanced;
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        undoEnhanceBtn.hidden = false;
+        setEnhanceState("Enhanced with a casual-professional voice.", false);
+      })
+      .catch((err) => {
+        setEnhanceState(err.message, true);
+      })
+      .finally(() => {
+        isEnhancing = false;
+        enhanceBtn.disabled = false;
+        enhanceBtn.textContent = "AI Enhance";
+      });
+  }
+
+  enhanceBtn.addEventListener("click", enhanceText);
+
+  undoEnhanceBtn.addEventListener("click", () => {
+    if (!previousTextBeforeEnhance) return;
+    textarea.value = previousTextBeforeEnhance;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    previousTextBeforeEnhance = "";
+    undoEnhanceBtn.hidden = true;
+    setEnhanceState("Reverted to your previous draft.", false);
+  });
 
   function requestPreview() {
     const text = textarea.value;
@@ -114,6 +347,7 @@
       return;
     }
 
+    previewContent.classList.add("is-refreshing");
     fetch("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -125,7 +359,10 @@
         updateCounters();
         renderPreview();
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        previewContent.classList.remove("is-refreshing");
+      });
   }
 
   function updateCounters() {
@@ -134,9 +371,16 @@
     for (const key of enabled) {
       const d = previewData[key];
       if (!d || d.limit === null) continue;
-      const cls = d.over ? "counter over" : "counter";
+      const cls = d.over ? "counter-card over" : "counter-card";
+      const pct = Math.min(100, Math.round((d.count / d.limit) * 100));
       parts.push(
-        `<span class="${cls}">${PLATFORM_LABELS[key]}: ${d.count}/${d.limit}</span>`
+        `<div class="${cls}">
+          <div class="counter-top">
+            <span>${PLATFORM_LABELS[key]}</span>
+            <strong>${d.count}/${d.limit}</strong>
+          </div>
+          <div class="counter-track"><span style="width:${pct}%"></span></div>
+        </div>`
       );
     }
     countersEl.innerHTML = parts.join("");
@@ -263,42 +507,104 @@
   }
 
   // --- Image Attachment ---
-  document.getElementById("attach-btn").addEventListener("click", () => {
-    imageInput.click();
-  });
-
-  imageInput.addEventListener("change", () => {
-    const file = imageInput.files[0];
-    if (file) {
-      selectedFile = file;
-      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
-      imagePreviewUrl = URL.createObjectURL(file);
-      imageNameEl.textContent = file.name;
-      clearImageBtn.hidden = false;
-      renderPreview();
-    }
-  });
-
-  clearImageBtn.addEventListener("click", () => {
+  function clearSelectedImage() {
     selectedFile = null;
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl);
       imagePreviewUrl = null;
     }
     imageInput.value = "";
+    imageThumbnail.removeAttribute("src");
     imageNameEl.textContent = "";
-    clearImageBtn.hidden = true;
+    imageThumbnailWrap.hidden = true;
+    imageDropzone.classList.remove("has-file");
+    imageDropzone.classList.remove("drag-over");
+    imageDropzoneHint.textContent = "or click to browse PNG, JPG, or GIF";
     renderPreview();
+  }
+
+  function clearComposerAfterSuccessfulPost() {
+    textarea.value = "";
+    localStorage.removeItem(DRAFT_KEY);
+    draftStateEl.textContent = "Draft cleared after publishing";
+    previousTextBeforeEnhance = "";
+    undoEnhanceBtn.hidden = true;
+    setEnhanceState("", false);
+    clearSelectedImage();
+    previewData = {};
+    countersEl.innerHTML = "";
+    updateTypingMetrics();
+    updatePostBtn();
+    renderPreview();
+  }
+
+  function setSelectedImage(file) {
+    if (!file || !file.type || !file.type.startsWith("image/")) {
+      statusEl.innerHTML = '<div class="platform-result error">Please choose a valid image file.</div>';
+      return;
+    }
+
+    selectedFile = file;
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    imagePreviewUrl = URL.createObjectURL(file);
+    imageNameEl.textContent = file.name;
+    imageThumbnail.src = imagePreviewUrl;
+    imageThumbnailWrap.hidden = false;
+    imageDropzone.classList.add("has-file");
+    imageDropzoneHint.textContent = "Drop a new image to replace this one";
+    renderPreview();
+  }
+
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files[0];
+    if (file) setSelectedImage(file);
   });
 
+  imageDropzone.addEventListener("click", () => {
+    imageInput.click();
+  });
+
+  imageDropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      imageInput.click();
+    }
+  });
+
+  ["dragenter", "dragover"].forEach((eventName) => {
+    imageDropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      imageDropzone.classList.add("drag-over");
+    });
+  });
+
+  ["dragleave", "dragend"].forEach((eventName) => {
+    imageDropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      imageDropzone.classList.remove("drag-over");
+    });
+  });
+
+  imageDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    imageDropzone.classList.remove("drag-over");
+    const file = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files[0] : null;
+    if (file) setSelectedImage(file);
+  });
+
+  clearImageBtn.addEventListener("click", clearSelectedImage);
+
   // --- Posting ---
-  postBtn.addEventListener("click", () => {
+  function postNow() {
     const text = textarea.value.trim();
     const platforms = getEnabledPlatforms();
     if (!text || platforms.length === 0) return;
 
     postBtn.disabled = true;
-    statusEl.innerHTML = '<div class="posting">Posting...</div>';
+    statusEl.innerHTML = '<div class="posting">Publishing across selected platforms...</div>';
 
     const formData = new FormData();
     formData.append("text", text);
@@ -314,21 +620,73 @@
       .then((r) => r.json())
       .then((results) => {
         let html = "";
+        let allSuccess = true;
         for (const [key, result] of Object.entries(results)) {
           const label = PLATFORM_LABELS[key] || key;
           if (result.success) {
-            html += `<div class="platform-result success">${label}: Done</div>`;
+            const link = Array.isArray(result.urls) && result.urls.length > 0
+              ? ` <a class="result-link" href="${escapeHtml(result.urls[0])}" target="_blank" rel="noopener noreferrer">View</a><button class="copy-link-btn" type="button" data-url="${encodeURIComponent(result.urls[0])}">Copy link</button>`
+              : "";
+            html += `<div class="platform-result success">${label}: Published${link}</div>`;
           } else {
+            allSuccess = false;
             html += `<div class="platform-result error">${label}: ${escapeHtml(result.error || "Unknown error")}</div>`;
           }
         }
         statusEl.innerHTML = html;
-        updatePostBtn();
+        if (allSuccess) {
+          clearComposerAfterSuccessfulPost();
+        } else {
+          updatePostBtn();
+        }
       })
       .catch((err) => {
         statusEl.innerHTML = `<div class="platform-result error">Request failed: ${escapeHtml(err.message)}</div>`;
         updatePostBtn();
       });
+  }
+
+  postBtn.addEventListener("click", postNow);
+
+  statusEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".copy-link-btn");
+    if (!btn) return;
+
+    const encodedUrl = btn.dataset.url || "";
+    const url = decodeURIComponent(encodedUrl);
+    if (!url) return;
+
+    const setCopiedState = () => {
+      const prev = btn.textContent;
+      btn.textContent = "Copied";
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = prev;
+        btn.disabled = false;
+      }, 1000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(setCopiedState).catch(() => {});
+      return;
+    }
+
+    const temp = document.createElement("textarea");
+    temp.value = url;
+    document.body.appendChild(temp);
+    temp.select();
+    try {
+      document.execCommand("copy");
+      setCopiedState();
+    } catch (_) {}
+    document.body.removeChild(temp);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      postNow();
+    }
   });
 
   // --- LinkedIn OAuth ---
@@ -339,8 +697,15 @@
   }
 
   // Initialize
+  const savedDraft = localStorage.getItem(DRAFT_KEY);
+  if (savedDraft) {
+    textarea.value = savedDraft;
+    draftStateEl.textContent = "Draft restored";
+  }
+  updateTypingMetrics();
   updateTabs();
   updatePostBtn();
+  requestPreview();
 
   fetch("/api/profile")
     .then((r) => r.json())

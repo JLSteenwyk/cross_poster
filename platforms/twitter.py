@@ -85,7 +85,8 @@ class TwitterPlatform:
                 tweet_ids.append(tweet_id)
                 previous_id = tweet_id
 
-            return {"success": True, "ids": tweet_ids}
+            urls = [f"https://x.com/i/web/status/{tweet_id}" for tweet_id in tweet_ids]
+            return {"success": True, "ids": tweet_ids, "urls": urls}
 
         except Exception as e:
             return {"success": False, "error": str(e)}

@@ -38,6 +38,22 @@ class BlueskyPlatform:
         except Exception:
             return None
 
+    @staticmethod
+    def _uri_to_web_url(uri: str) -> Optional[str]:
+        """Convert at:// URI to public bsky.app URL when possible."""
+        try:
+            # at://did:plc:xxx/app.bsky.feed.post/abc123
+            if not uri.startswith("at://"):
+                return None
+            parts = uri[5:].split("/")
+            if len(parts) < 3:
+                return None
+            actor = parts[0]
+            rkey = parts[-1]
+            return f"https://bsky.app/profile/{actor}/post/{rkey}"
+        except Exception:
+            return None
+
     def post(self, parts: list[str], image_bytes: Optional[bytes] = None) -> dict:
         """Post text parts as a post or thread.
 
@@ -80,7 +96,9 @@ class BlueskyPlatform:
                     if root_ref is None:
                         root_ref = parent_ref
 
-            return {"success": True, "uris": uris}
+            urls = [self._uri_to_web_url(uri) for uri in uris]
+            urls = [u for u in urls if u]
+            return {"success": True, "uris": uris, "urls": urls}
 
         except Exception as e:
             return {"success": False, "error": str(e)}

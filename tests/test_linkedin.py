@@ -19,6 +19,7 @@ class TestLinkedInPlatform:
 
         mock_post_resp = MagicMock()
         mock_post_resp.status_code = 201
+        mock_post_resp.headers = {"x-restli-id": "urn:li:share:123456"}
 
         mock_requests.get.return_value = mock_userinfo_resp
         mock_requests.post.return_value = mock_post_resp
@@ -30,6 +31,7 @@ class TestLinkedInPlatform:
         result = platform.post(["Hello LinkedIn!"])
 
         assert result["success"] is True
+        assert result["urls"] == ["https://www.linkedin.com/feed/update/urn:li:share:123456/"]
 
     @patch("platforms.linkedin.requests")
     def test_post_joins_parts(self, mock_requests):
@@ -40,6 +42,7 @@ class TestLinkedInPlatform:
 
         mock_post_resp = MagicMock()
         mock_post_resp.status_code = 201
+        mock_post_resp.headers = {}
 
         mock_requests.get.return_value = mock_userinfo_resp
         mock_requests.post.return_value = mock_post_resp

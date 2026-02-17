@@ -21,6 +21,8 @@ class LinkedInPlatform:
     """Post to LinkedIn via the Posts API."""
 
     REDIRECT_URI = "http://localhost:5001/callback/linkedin"
+    OAUTH_PORT = 5001
+    REQUEST_TIMEOUT = (5, 20)
 
     def __init__(
         self,
@@ -59,6 +61,7 @@ class LinkedInPlatform:
         resp = requests.get(
             "https://api.linkedin.com/v2/userinfo",
             headers={"Authorization": f"Bearer {self.access_token}"},
+            timeout=self.REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
         self._person_id = resp.json()["sub"]
@@ -81,6 +84,7 @@ class LinkedInPlatform:
                         "owner": f"urn:li:person:{person_id}",
                     }
                 },
+                timeout=self.REQUEST_TIMEOUT,
             )
             init_resp.raise_for_status()
 
@@ -89,11 +93,13 @@ class LinkedInPlatform:
             image_urn = upload_data["image"]
 
             # Step 2: Upload the binary image
-            requests.put(
+            upload_resp = requests.put(
                 upload_url,
                 headers={"Authorization": f"Bearer {self.access_token}"},
                 data=image_bytes,
+                timeout=self.REQUEST_TIMEOUT,
             )
+            upload_resp.raise_for_status()
 
             return image_urn
 
@@ -144,6 +150,7 @@ class LinkedInPlatform:
                 "client_secret": self.client_secret,
                 "redirect_uri": self.REDIRECT_URI,
             },
+            timeout=self.REQUEST_TIMEOUT,
         )
 
         if resp.status_code != 200:
@@ -187,6 +194,7 @@ class LinkedInPlatform:
                 "client_id": self.client_id,
                 "client_secret": self.client_secret,
             },
+            timeout=self.REQUEST_TIMEOUT,
         )
 
         if resp.status_code != 200:
@@ -234,10 +242,21 @@ class LinkedInPlatform:
                 "https://api.linkedin.com/rest/posts",
                 headers=self._api_headers(),
                 json=payload,
+                timeout=self.REQUEST_TIMEOUT,
             )
 
             if resp.status_code == 201:
-                return {"success": True}
+                post_id = resp.headers.get("x-restli-id", "")
+                post_url = (
+                    f"https://www.linkedin.com/feed/update/{post_id}/"
+                    if post_id else None
+                )
+                result = {"success": True}
+                if post_id:
+                    result["id"] = post_id
+                if post_url:
+                    result["urls"] = [post_url]
+                return result
             else:
                 return {"success": False, "error": f"Post failed (status {resp.status_code}): {resp.text}"}
 

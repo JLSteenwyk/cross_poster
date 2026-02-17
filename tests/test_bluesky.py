@@ -24,6 +24,7 @@ class TestBlueskyPlatform:
 
         assert result["success"] is True
         assert len(result["uris"]) == 1
+        assert result["urls"] == ["https://bsky.app/profile/did:plc:xxx/post/123"]
         mock_client.login.assert_called_once()
 
     @patch("platforms.bluesky.models")
@@ -43,6 +44,10 @@ class TestBlueskyPlatform:
 
         assert result["success"] is True
         assert len(result["uris"]) == 2
+        assert result["urls"] == [
+            "https://bsky.app/profile/did:plc:xxx/post/0",
+            "https://bsky.app/profile/did:plc:xxx/post/1",
+        ]
 
     @patch("platforms.bluesky.Client")
     def test_post_failure(self, mock_client_cls):

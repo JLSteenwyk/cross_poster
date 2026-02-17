@@ -32,14 +32,14 @@ def _measure(text: str, use_graphemes: bool) -> int:
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences, preserving trailing whitespace with each sentence."""
-    parts = re.split(r'(?<=[.!?])\s+', text)
-    return [p for p in parts if p]
+    """Split text into sentence-like chunks while preserving whitespace/newlines."""
+    chunks = re.findall(r'[^.!?]+[.!?]*(?:\s+|$)', text, flags=re.S)
+    return [c for c in chunks if c]
 
 
 def _split_words(text: str) -> list[str]:
-    """Split text into words."""
-    return text.split()
+    """Split into word/whitespace tokens while preserving exact formatting."""
+    return re.findall(r"\S+|\s+", text, flags=re.S)
 
 
 def split_for_platform(text: str, config: PlatformConfig) -> list[str]:
@@ -107,18 +107,24 @@ def _build_parts_from_segments(
 
     parts = []
     current = ""
+    current_len = 0
 
-    separator = " "
+    segment_lengths = [
+        grapheme.length(segment) if config.use_graphemes else len(segment)
+        for segment in segments
+    ]
 
-    for segment in segments:
-        candidate = (current + separator + segment).strip() if current else segment
+    for segment, segment_len in zip(segments, segment_lengths):
+        candidate_len = current_len + segment_len
 
-        if _measure(candidate, config.use_graphemes) <= effective_limit:
-            current = candidate
+        if candidate_len <= effective_limit:
+            current += segment
+            current_len = candidate_len
         else:
             if current:
                 parts.append(current)
             current = segment
+            current_len = segment_len
 
     if current:
         parts.append(current)
@@ -132,17 +138,18 @@ def _add_indicators(parts: list[str], config: PlatformConfig) -> list[str]:
     result = []
     for i, part in enumerate(parts, 1):
         indicator = f" ({i}/{total})"
+        base = part.rstrip()
         # Verify it still fits; if not, trim the part
-        combined = part + indicator
+        combined = base + indicator
         if config.char_limit and _measure(combined, config.use_graphemes) > config.char_limit:
             # Trim part to make room
             overage = _measure(combined, config.use_graphemes) - config.char_limit
             if config.use_graphemes:
                 # Trim graphemes from end
-                graphemes_list = list(grapheme.graphemes(part))
+                graphemes_list = list(grapheme.graphemes(base))
                 trimmed = "".join(graphemes_list[:len(graphemes_list) - overage])
             else:
-                trimmed = part[:len(part) - overage]
+                trimmed = base[:len(base) - overage]
             result.append(trimmed + indicator)
         else:
             result.append(combined)

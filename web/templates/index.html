@@ -8,41 +8,86 @@
 </head>
 <body>
 
-<header>
-  <h1>Cross-Poster</h1>
+<div class="bg-orb orb-a"></div>
+<div class="bg-orb orb-b"></div>
+<div class="bg-grid"></div>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand">
+      <span class="brand-mark">CP</span>
+      <div class="brand-copy">
+        <h1>Cross-Poster</h1>
+        <p>Compose once, tailor instantly, publish everywhere.</p>
+      </div>
+    </div>
+  </div>
 </header>
 
-<main>
-  <!-- Left column: compose -->
+<main class="workspace">
   <section class="compose">
-    <div class="platforms">
-      <label><input type="checkbox" name="platform" value="twitter" checked> Twitter</label>
-      <label><input type="checkbox" name="platform" value="bluesky" checked> BlueSky</label>
-      <label><input type="checkbox" name="platform" value="linkedin" checked> LinkedIn</label>
+    <div class="panel-intro">
+      <h2>Your multi-platform cockpit</h2>
+      <p>Switch platforms, tune your message, and ship with confidence.</p>
     </div>
 
-    <textarea id="compose-text" placeholder="Write your post here..."></textarea>
+    <div class="platforms">
+      <label class="platform-toggle"><input type="checkbox" name="platform" value="twitter" checked> <span>Twitter</span></label>
+      <label class="platform-toggle"><input type="checkbox" name="platform" value="bluesky" checked> <span>BlueSky</span></label>
+      <label class="platform-toggle"><input type="checkbox" name="platform" value="linkedin" checked> <span>LinkedIn</span></label>
+    </div>
+
+    <div class="compose-shell">
+      <div class="compose-meta">
+        <span id="draft-state">Draft not saved yet</span>
+        <span id="typing-metrics">0 chars · 0 words</span>
+      </div>
+      <textarea id="compose-text" placeholder="What do you want to share today?"></textarea>
+      <div class="compose-tools">
+        <button id="enhance-btn" class="enhance-btn" type="button">AI Enhance</button>
+        <button id="undo-enhance-btn" class="undo-enhance-btn" type="button" hidden>Undo</button>
+        <span id="enhance-state" class="enhance-state"></span>
+      </div>
+    </div>
 
     <div class="counters" id="counters"></div>
 
     <div class="actions">
       <div class="image-controls">
-        <label class="attach-btn" id="attach-btn">
-          Attach Image
-          <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif" hidden>
-        </label>
-        <span id="image-name"></span>
-        <button id="clear-image" class="clear-btn" hidden>Clear</button>
+        <button id="emoji-btn" class="emoji-btn" type="button" aria-label="Insert emoji">Emoji</button>
+        <div id="emoji-picker" class="emoji-picker" hidden></div>
       </div>
 
-      <button id="post-btn" disabled>Post</button>
+      <button id="post-btn" disabled>
+        <span>Post Everywhere</span>
+        <kbd>Ctrl/⌘ + Enter</kbd>
+      </button>
+    </div>
+
+    <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif" hidden>
+
+    <div id="image-dropzone" class="image-dropzone" role="button" tabindex="0" aria-label="Drop an image here or click to upload">
+      <span class="dropzone-title">Drop image here</span>
+      <span id="image-dropzone-hint" class="dropzone-hint">or click to browse PNG, JPG, or GIF</span>
+    </div>
+
+    <div id="image-thumbnail-wrap" class="image-thumbnail-wrap" hidden>
+      <img id="image-thumbnail" class="image-thumbnail" alt="Selected image preview">
+      <div class="image-thumbnail-meta">
+        <span id="image-name"></span>
+        <button id="clear-image" class="clear-btn" type="button">Remove image</button>
+      </div>
     </div>
 
     <div id="status" class="status"></div>
   </section>
 
-  <!-- Right column: preview -->
   <section class="preview">
+    <div class="panel-intro">
+      <h2>Live preview studio</h2>
+      <p>See exactly how each platform version will look before you publish.</p>
+    </div>
+
     <div class="tabs" id="tabs">
       <button class="tab active" data-platform="twitter">Twitter</button>
       <button class="tab" data-platform="bluesky">BlueSky</button>
@@ -63,6 +108,6 @@
 </script>
 {% endif %}
 
-<script src="{{ url_for('main.static', filename='js/app.js') }}"></script>
+<script type="module" src="{{ url_for('main.static', filename='js/app.js') }}"></script>
 </body>
 </html>

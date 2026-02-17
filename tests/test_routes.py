@@ -187,3 +187,89 @@ class TestLinkedInOAuth:
         assert resp.status_code == 200
         data = resp.get_json()
         assert "authorized" in data
+
+
+class TestEnhance:
+    def test_enhance_no_text(self, client):
+        resp = client.post(
+            "/api/enhance",
+            data=json.dumps({"text": ""}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "No text provided" in data["error"]
+
+    @patch("web.routes.os.environ.get")
+    def test_enhance_missing_api_key(self, mock_get, client):
+        def _env_side_effect(key, default=""):
+            if key == "OPENAI_API_KEY":
+                return ""
+            return default
+
+        mock_get.side_effect = _env_side_effect
+        resp = client.post(
+            "/api/enhance",
+            data=json.dumps({"text": "Hello world"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "OPENAI_API_KEY" in data["error"]
+
+    def test_enhance_too_long(self, client):
+        resp = client.post(
+            "/api/enhance",
+            data=json.dumps({"text": "A" * 7000}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "Text too long" in data["error"]
+
+    @patch("web.routes._is_enhance_rate_limited")
+    def test_enhance_rate_limited(self, mock_rate_limited, client):
+        mock_rate_limited.return_value = True
+        resp = client.post(
+            "/api/enhance",
+            data=json.dumps({"text": "Hello world"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 429
+        data = resp.get_json()
+        assert "Too many enhancement requests" in data["error"]
+
+    @patch("web.routes.http_requests.post")
+    @patch("web.routes.os.environ.get")
+    def test_enhance_success(self, mock_env_get, mock_post, client):
+        def _env_side_effect(key, default=""):
+            if key == "OPENAI_API_KEY":
+                return "test-key"
+            if key == "OPENAI_MODEL":
+                return "gpt-test"
+            return default
+
+        mock_env_get.side_effect = _env_side_effect
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Refined post copy.",
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = mock_resp
+
+        resp = client.post(
+            "/api/enhance",
+            data=json.dumps({"text": "Original post"}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["text"] == "Refined post copy."

@@ -42,6 +42,44 @@ Edit `.env` with your credentials:
 - **BlueSky** — Use your handle and an [app password](https://bsky.app/settings/app-passwords).
 - **LinkedIn** — Create an app at [linkedin.com/developers](https://www.linkedin.com/developers/apps), add your client ID and secret. The access/refresh tokens are auto-managed after completing the OAuth flow in the app.
 
+### 2.1 `.env` setup details
+
+The app loads `.env` from the project root (`cross_poster/.env`) when `main.py` starts, so keep the file in that exact location.
+
+Required keys by platform:
+
+- **Twitter/X (required to post to Twitter):**
+  - `TWITTER_API_KEY`
+  - `TWITTER_API_SECRET`
+  - `TWITTER_ACCESS_TOKEN`
+  - `TWITTER_ACCESS_TOKEN_SECRET`
+- **BlueSky (required to post to BlueSky):**
+  - `BLUESKY_USERNAME` (example: `your_handle.bsky.social`)
+  - `BLUESKY_PASSWORD` (app password, not your account password)
+- **LinkedIn (required to start OAuth):**
+  - `LINKEDIN_CLIENT_ID`
+  - `LINKEDIN_CLIENT_SECRET`
+  - `LINKEDIN_ACCESS_TOKEN` (leave blank initially)
+  - `LINKEDIN_REFRESH_TOKEN` (leave blank initially)
+
+Optional profile/display keys (used for preview mockups only):
+
+- `DISPLAY_NAME`
+- `TWITTER_HANDLE`
+- `LINKEDIN_HEADLINE`
+
+Formatting rules for `.env`:
+
+- Use `KEY=value` format, one per line.
+- Do not add spaces around `=`.
+- Keep empty LinkedIn token values as blank (for example: `LINKEDIN_ACCESS_TOKEN=`).
+- Do not commit `.env` to version control.
+
+LinkedIn OAuth note:
+
+- In your LinkedIn app settings, set the redirect URI to `http://localhost:5001/callback/linkedin` exactly.
+- After you click **Authorize LinkedIn** in the app and complete consent, the app writes `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_REFRESH_TOKEN` into `.env` automatically.
+
 ### 3. Run
 
 ```bash

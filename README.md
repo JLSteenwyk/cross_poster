@@ -2,6 +2,10 @@
 
 A web app for composing and posting to Twitter/X, BlueSky, and LinkedIn simultaneously. Write once, preview per-platform, and post everywhere.
 
+## Preview
+
+![Cross-Poster UI Preview](preview.png)
+
 ## Features
 
 - **Smart text splitting** — Automatically breaks long text into threads respecting each platform's character/grapheme limits (Twitter 280 chars, BlueSky 300 graphemes, LinkedIn 3000 chars). Splits at sentence boundaries first, then word boundaries.

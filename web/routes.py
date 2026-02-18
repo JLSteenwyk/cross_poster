@@ -10,8 +10,10 @@ import grapheme
 import requests as http_requests
 from flask import Blueprint, render_template, request, jsonify, redirect
 
-from core.splitter import split_for_platform, TWITTER, BLUESKY, LINKEDIN
+from core.splitter import TWITTER, BLUESKY, LINKEDIN
+from core.thread_plan import build_thread_plan
 from core.media import validate_image, resize_for_platform
+from core.text_normalizer import normalize_common_text, normalize_linkedin_text
 from platforms.twitter import TwitterPlatform
 from platforms.bluesky import BlueskyPlatform
 from platforms.linkedin import LinkedInPlatform
@@ -43,6 +45,8 @@ ENHANCE_RATE_LIMIT = 20  # requests
 ENHANCE_WINDOW_SECONDS = 60  # per minute
 _enhance_rate_bucket = defaultdict(deque)
 _enhance_rate_lock = Lock()
+_platform_rate_limits = {}
+_platform_rate_limits_lock = Lock()
 
 
 def _enhance_text_with_ai(text: str) -> str:
@@ -128,9 +132,7 @@ def preview():
     data = request.get_json()
     text = data.get("text", "")
     platforms = data.get("platforms", [])
-
-    char_count = len(text)
-    grapheme_count = grapheme.length(text)
+    image_count = int(data.get("imageCount") or 0)
 
     result = {}
     for key in platforms:
@@ -138,13 +140,24 @@ def preview():
         if not config:
             continue
 
-        parts = split_for_platform(text, config)
+        normalized_text = normalize_linkedin_text(text) if key == "linkedin" else normalize_common_text(text)
 
-        count = grapheme_count if config.use_graphemes else char_count
+        image_cap = 4 if key in ("twitter", "bluesky") else 1
+        parts, image_refs_by_part, mode = build_thread_plan(
+            text=normalized_text,
+            config=config,
+            image_count=image_count,
+            per_post_image_cap=image_cap,
+        )
+
+        full_text = "".join(parts)
+        count = grapheme.length(full_text) if config.use_graphemes else len(full_text)
         limit = config.char_limit
 
         result[key] = {
             "parts": parts,
+            "image_refs": image_refs_by_part,
+            "mode": mode,
             "count": count,
             "limit": limit,
             "over": limit is not None and count > limit,
@@ -158,18 +171,26 @@ def post():
     """Post to all enabled platforms. Accepts multipart/form-data."""
     text = request.form.get("text", "").strip()
     platforms = request.form.getlist("platforms")
-    image_file = request.files.get("image")
+    image_files = request.files.getlist("images")
+    if not image_files:
+        # Backward compatibility for older clients using a single "image" field.
+        legacy_image = request.files.get("image")
+        if legacy_image:
+            image_files = [legacy_image]
 
     if not text:
         return jsonify({"error": "No text provided"}), 400
     if not platforms:
         return jsonify({"error": "No platforms selected"}), 400
 
-    image_bytes = None
-    if image_file and image_file.filename:
+    image_bytes_list = []
+    for image_file in image_files:
+        if not image_file or not image_file.filename:
+            continue
         image_bytes = image_file.read()
         if not validate_image(image_bytes):
             return jsonify({"error": "Invalid image file"}), 400
+        image_bytes_list.append(image_bytes)
 
     results = {}
     for key in platforms:
@@ -178,19 +199,29 @@ def post():
             results[key] = {"success": False, "error": "Unknown platform"}
             continue
 
-        parts = split_for_platform(text, config)
+        normalized_text = normalize_linkedin_text(text) if key == "linkedin" else normalize_common_text(text)
 
-        platform_image = None
-        if image_bytes:
-            platform_image = resize_for_platform(image_bytes, key)
+        max_images = 4 if key in ("twitter", "bluesky") else 1
+        parts, image_refs_by_part, mode = build_thread_plan(
+            text=normalized_text,
+            config=config,
+            image_count=len(image_bytes_list),
+            per_post_image_cap=max_images,
+        )
+
+        resized_images = [resize_for_platform(img, key) for img in image_bytes_list]
+        images_by_part = [
+            [resized_images[idx] for idx in refs[:max_images] if 0 <= idx < len(resized_images)]
+            for refs in image_refs_by_part
+        ]
 
         try:
             if key == "twitter":
                 platform = TwitterPlatform()
-                result = platform.post(parts, image_bytes=platform_image)
+                result = platform.post(parts, images_by_part=images_by_part, mode=mode)
             elif key == "bluesky":
                 platform = BlueskyPlatform()
-                result = platform.post(parts, image_bytes=platform_image)
+                result = platform.post(parts, images_by_part=images_by_part, mode=mode)
             elif key == "linkedin":
                 platform = LinkedInPlatform()
                 if not platform.access_token:
@@ -199,11 +230,16 @@ def post():
                         "error": "No access token. Authorize LinkedIn first.",
                     }
                 else:
-                    result = platform.post(parts, image_bytes=platform_image)
+                    result = platform.post(parts, images_by_part=images_by_part, mode=mode)
             else:
                 result = {"success": False, "error": "Unknown platform"}
         except Exception as e:
             result = {"success": False, "error": str(e)}
+
+        rate_limit = result.get("rate_limit")
+        if rate_limit:
+            with _platform_rate_limits_lock:
+                _platform_rate_limits[key] = rate_limit
 
         results[key] = result
 
@@ -313,6 +349,13 @@ def linkedin_status():
     """Check if LinkedIn access token exists."""
     token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
     return jsonify({"authorized": bool(token)})
+
+
+@bp.route("/api/rate-limits")
+def rate_limits():
+    """Return latest known per-platform API rate-limit snapshots."""
+    with _platform_rate_limits_lock:
+        return jsonify(_platform_rate_limits)
 
 
 @bp.route("/api/profile")

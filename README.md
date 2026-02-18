@@ -10,7 +10,8 @@ A web app for composing and posting to Twitter/X, BlueSky, and LinkedIn simultan
 
 - **Smart text splitting** — Automatically breaks long text into threads respecting each platform's character/grapheme limits (Twitter 280 chars, BlueSky 300 graphemes, LinkedIn 3000 chars). Splits at sentence boundaries first, then word boundaries.
 - **Live preview** — Real-time platform-specific mockups that match the look of actual Twitter, BlueSky, and LinkedIn posts, including thread connectors.
-- **Image attachment** — Attach a single image to your post. It's shown in the preview and auto-resized to meet each platform's size limits (Twitter 5 MB, BlueSky 1 MB, LinkedIn 10 MB).
+- **Image attachment** — Attach one or more images to your post. Images are shown in preview and auto-resized to meet each platform's size limits (Twitter 5 MB each, BlueSky 1 MB each, LinkedIn 10 MB practical limit). Posting caps: Twitter up to 4 images, BlueSky up to 4 images, LinkedIn uses the first image.
+- **Manual thread + image mapping** — Use `---` on its own line to define manual subposts and add `[img1]`, `[img2]`, etc. in each subpost to bind uploaded images to specific thread posts.
 - **Thread support** — Twitter and BlueSky posts are threaded as proper replies. LinkedIn joins parts into a single post.
 - **Character counters** — Live counts with visual warnings when you exceed a platform's limit.
 - **LinkedIn OAuth** — Built-in OAuth2 flow for LinkedIn authorization.

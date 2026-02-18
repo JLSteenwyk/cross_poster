@@ -16,11 +16,12 @@ class PlatformConfig:
     name: str
     char_limit: Optional[int]
     use_graphemes: bool
+    split_mode: str = "sentence_hybrid"
 
 
-TWITTER = PlatformConfig("Twitter", 280, False)
-BLUESKY = PlatformConfig("BlueSky", 300, True)
-LINKEDIN = PlatformConfig("LinkedIn", 3000, False)
+TWITTER = PlatformConfig("Twitter", 280, False, "word_dense")
+BLUESKY = PlatformConfig("BlueSky", 300, True, "sentence_hybrid")
+LINKEDIN = PlatformConfig("LinkedIn", 3000, False, "sentence_hybrid")
 
 
 
@@ -33,7 +34,7 @@ def _measure(text: str, use_graphemes: bool) -> int:
 
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentence-like chunks while preserving whitespace/newlines."""
-    chunks = re.findall(r'[^.!?]+[.!?]*(?:\s+|$)', text, flags=re.S)
+    chunks = re.findall(r'.+?(?:[.!?](?:\s+|$)|$)', text, flags=re.S)
     return [c for c in chunks if c]
 
 
@@ -60,39 +61,26 @@ def split_for_platform(text: str, config: PlatformConfig) -> list[str]:
     if _measure(text, config.use_graphemes) <= config.char_limit:
         return [text]
 
-    # First pass: estimate number of parts to calculate indicator size
-    # We'll use sentence splitting first, then word splitting as fallback
-    sentences = _split_sentences(text)
-
-    # Build parts by accumulating sentences
-    raw_parts = _build_parts_from_segments(sentences, config, is_sentences=True)
-
-    # If we still have parts that are too long (single long sentences),
-    # split those at word boundaries
-    final_parts = []
-    for part in raw_parts:
-        if _measure(part, config.use_graphemes) > config.char_limit:
-            words = _split_words(part)
-            word_parts = _build_parts_from_segments(
-                words, config, is_sentences=False,
-                total_parts_hint=len(raw_parts)
-            )
-            final_parts.extend(word_parts)
+    if config.split_mode == "word_dense":
+        raw_parts = _build_parts_with_dynamic_reserve(_split_words(text), config)
+    else:
+        sentence_parts = _build_parts_with_dynamic_reserve(_split_sentences(text), config)
+        # BlueSky favors sentence boundaries, but if that creates a tiny tail,
+        # repack by words for denser posts.
+        if _needs_denser_word_packing(sentence_parts, config):
+            raw_parts = _build_parts_with_dynamic_reserve(_split_words(text), config)
         else:
-            final_parts.append(part)
+            raw_parts = sentence_parts
 
-    # Add thread indicators if more than one part
-    if len(final_parts) > 1:
-        final_parts = _add_indicators(final_parts, config)
-
-    return final_parts
+    if len(raw_parts) > 1:
+        return _add_indicators(raw_parts, config)
+    return raw_parts
 
 
 def _build_parts_from_segments(
     segments: list[str],
     config: PlatformConfig,
-    is_sentences: bool,
-    total_parts_hint: int = 0,
+    indicator_reserve: int = 0,
 ) -> list[str]:
     """Build parts from segments (sentences or words), respecting limits.
 
@@ -101,8 +89,6 @@ def _build_parts_from_segments(
     if not segments:
         return [""]
 
-    # Reserve space for thread indicator: " (XX/XX)" = up to 8 chars
-    indicator_reserve = 8
     effective_limit = config.char_limit - indicator_reserve
 
     parts = []
@@ -130,6 +116,40 @@ def _build_parts_from_segments(
         parts.append(current)
 
     return parts
+
+
+def _build_parts_with_dynamic_reserve(segments: list[str], config: PlatformConfig) -> list[str]:
+    """Build parts while reserving exact indicator length for final part count."""
+    if not segments:
+        return [""]
+
+    # Start with a practical indicator estimate like " (1/2)".
+    total_estimate = 2
+    parts = _build_parts_from_segments(segments, config, indicator_reserve=6)
+
+    for _ in range(6):
+        if len(parts) <= 1:
+            # No indicators needed for a single-part post.
+            return _build_parts_from_segments(segments, config, indicator_reserve=0)
+
+        total_estimate = len(parts)
+        reserve = len(f" ({total_estimate}/{total_estimate})")
+        new_parts = _build_parts_from_segments(segments, config, indicator_reserve=reserve)
+
+        if len(new_parts) == total_estimate:
+            return new_parts
+        parts = new_parts
+
+    return parts
+
+
+def _needs_denser_word_packing(parts: list[str], config: PlatformConfig) -> bool:
+    """Detect split patterns with a tiny trailing part that word packing can improve."""
+    if not parts or len(parts) < 2 or config.char_limit is None:
+        return False
+    last_fill = _measure(parts[-1], config.use_graphemes) / config.char_limit
+    prev_fill = _measure(parts[-2], config.use_graphemes) / config.char_limit
+    return last_fill < 0.35 and prev_fill > 0.65
 
 
 def _add_indicators(parts: list[str], config: PlatformConfig) -> list[str]:

@@ -99,3 +99,18 @@ class TestSplitForPlatform:
             for p in parts
         )
         assert "Line one.\n\nLine two with spacing.\nLine three." in joined
+
+    def test_preserves_dotted_versions_when_splitting(self):
+        prefix = ("A" * 260) + ". "
+        text = (
+            prefix
+            + "OrthoFisher (v1.1.2) has had a major quality and usability refresh "
+            + "since the initial release."
+        )
+        parts = split_for_platform(text, TWITTER)
+        assert len(parts) > 1
+        joined = " ".join(
+            p.rsplit(" (", 1)[0] if p.endswith(")") else p
+            for p in parts
+        )
+        assert "(v1.1.2)" in joined

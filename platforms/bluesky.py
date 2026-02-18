@@ -54,7 +54,14 @@ class BlueskyPlatform:
         except Exception:
             return None
 
-    def post(self, parts: list[str], image_bytes: Optional[bytes] = None) -> dict:
+    def post(
+        self,
+        parts: list[str],
+        image_bytes: Optional[bytes] = None,
+        image_bytes_list: Optional[list[bytes]] = None,
+        images_by_part: Optional[list[list[bytes]]] = None,
+        mode: str = "auto",
+    ) -> dict:
         """Post text parts as a post or thread.
 
         Args:
@@ -71,12 +78,27 @@ class BlueskyPlatform:
             parent_ref = None
             root_ref = None
 
+            _ = mode  # reserved for result metadata and debugging
+            images = image_bytes_list if image_bytes_list is not None else (
+                [image_bytes] if image_bytes else []
+            )
+
             for i, text in enumerate(parts):
                 embed = None
-                if i == 0 and image_bytes:
-                    img = self._upload_image(image_bytes)
-                    if img:
-                        embed = models.AppBskyEmbedImages.Main(images=[img])
+                part_images = None
+                if images_by_part is not None and i < len(images_by_part):
+                    part_images = images_by_part[i]
+                elif i == 0:
+                    part_images = images
+
+                if part_images:
+                    uploaded_images = []
+                    for image_data in part_images[:4]:
+                        img = self._upload_image(image_data)
+                        if img:
+                            uploaded_images.append(img)
+                    if uploaded_images:
+                        embed = models.AppBskyEmbedImages.Main(images=uploaded_images)
 
                 reply = None
                 if parent_ref and root_ref:

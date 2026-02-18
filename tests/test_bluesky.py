@@ -60,3 +60,41 @@ class TestBlueskyPlatform:
 
         assert result["success"] is False
         assert "Network error" in result["error"]
+
+    @patch("platforms.bluesky.models")
+    @patch("platforms.bluesky.Client")
+    def test_post_multiple_images_on_first_post(self, mock_client_cls, mock_models):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.uri = "at://did:plc:xxx/app.bsky.feed.post/123"
+        mock_client.send_post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        platform = BlueskyPlatform(username="test.bsky.social", password="pass")
+        with patch.object(platform, "_upload_image", side_effect=["img1", "img2", "img3"]):
+            result = platform.post(["Hello."], image_bytes_list=[b"1", b"2", b"3"])
+
+        assert result["success"] is True
+        mock_models.AppBskyEmbedImages.Main.assert_called_once_with(images=["img1", "img2", "img3"])
+
+    @patch("platforms.bluesky.models")
+    @patch("platforms.bluesky.Client")
+    def test_post_images_by_part(self, mock_client_cls, mock_models):
+        mock_client = MagicMock()
+        responses = [
+            MagicMock(uri="at://did:plc:xxx/app.bsky.feed.post/1"),
+            MagicMock(uri="at://did:plc:xxx/app.bsky.feed.post/2"),
+        ]
+        mock_client.send_post.side_effect = responses
+        mock_client_cls.return_value = mock_client
+
+        platform = BlueskyPlatform(username="test.bsky.social", password="pass")
+        with patch.object(platform, "_upload_image", side_effect=["a", "b"]):
+            result = platform.post(
+                ["First", "Second"],
+                images_by_part=[[b"1"], [b"2"]],
+                mode="manual",
+            )
+
+        assert result["success"] is True
+        assert mock_models.AppBskyEmbedImages.Main.call_count == 2

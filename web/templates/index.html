@@ -48,6 +48,7 @@
         <button id="undo-enhance-btn" class="undo-enhance-btn" type="button" hidden>Undo</button>
         <span id="enhance-state" class="enhance-state"></span>
       </div>
+      <p class="thread-hint">Tip: Use <code>---</code> on its own line to split manual subposts. Add image tags like <code>[img1]</code>, <code>[img2]</code> to tie images to that subpost.</p>
     </div>
 
     <div class="counters" id="counters"></div>
@@ -64,11 +65,11 @@
       </button>
     </div>
 
-    <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif" hidden>
+    <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif" multiple hidden>
 
     <div id="image-dropzone" class="image-dropzone" role="button" tabindex="0" aria-label="Drop an image here or click to upload">
       <span class="dropzone-title">Drop image here</span>
-      <span id="image-dropzone-hint" class="dropzone-hint">or click to browse PNG, JPG, or GIF</span>
+      <span id="image-dropzone-hint" class="dropzone-hint">or click to browse one or more PNG, JPG, or GIF files</span>
     </div>
 
     <div id="image-thumbnail-wrap" class="image-thumbnail-wrap" hidden>
@@ -78,8 +79,10 @@
         <button id="clear-image" class="clear-btn" type="button">Remove image</button>
       </div>
     </div>
+    <div id="image-index-strip" class="image-index-strip" hidden></div>
 
     <div id="status" class="status"></div>
+    <div id="rate-limits" class="rate-limits"></div>
   </section>
 
   <section class="preview">

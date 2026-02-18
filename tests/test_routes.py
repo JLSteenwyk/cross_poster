@@ -72,6 +72,59 @@ class TestPreview:
         data = resp.get_json()
         assert data["twitter"]["parts"] == [""]
 
+    def test_preview_normalizes_em_dash(self, client):
+        resp = client.post(
+            "/api/preview",
+            data=json.dumps({"text": "A — B", "platforms": ["twitter"]}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["twitter"]["parts"] == ["A -- B"]
+
+    def test_preview_linkedin_neutralizes_asterisk_formatting(self, client):
+        resp = client.post(
+            "/api/preview",
+            data=json.dumps({"text": "i*agent and *bold*", "platforms": ["linkedin"]}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["linkedin"]["parts"] == ["i*\u200bagent and *\u200bbold*\u200b"]
+
+    def test_preview_manual_mode_with_image_refs(self, client):
+        resp = client.post(
+            "/api/preview",
+            data=json.dumps({
+                "text": "One [img1]\n---\nTwo [img2]",
+                "platforms": ["twitter"],
+                "imageCount": 2,
+            }),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["twitter"]["mode"] == "manual"
+        assert data["twitter"]["parts"] == ["One", "Two"]
+        assert data["twitter"]["image_refs"] == [[0], [1]]
+
+    @patch("web.routes.LinkedInPlatform", autospec=True)
+    def test_post_linkedin_includes_text_after_manual_separator(self, MockLinkedIn, client):
+        mock_instance = MockLinkedIn.return_value
+        mock_instance.access_token = "tok"
+        mock_instance.post.return_value = {"success": True}
+
+        resp = client.post(
+            "/api/post",
+            data={
+                "text": "First section\n---\nSecond section",
+                "platforms": "linkedin",
+            },
+        )
+        assert resp.status_code == 200
+        args = mock_instance.post.call_args.args
+        assert args[0] == ["First section", "Second section"]
+
 
 class TestPost:
     def test_post_no_text(self, client):
@@ -156,6 +209,37 @@ class TestPost:
         data = resp.get_json()
         assert data["twitter"]["success"] is True
 
+    @patch("web.routes.TwitterPlatform", autospec=True)
+    def test_post_with_multiple_images(self, MockTwitter, client):
+        mock_instance = MockTwitter.return_value
+        mock_instance.post.return_value = {"success": True}
+
+        from PIL import Image
+        img1 = io.BytesIO()
+        img2 = io.BytesIO()
+        Image.new("RGB", (10, 10), color="red").save(img1, format="JPEG")
+        Image.new("RGB", (10, 10), color="blue").save(img2, format="JPEG")
+        img1.seek(0)
+        img2.seek(0)
+
+        resp = client.post(
+            "/api/post",
+            data={
+                "text": "Hello with images",
+                "platforms": "twitter",
+                "images": [(img1, "one.jpg"), (img2, "two.jpg")],
+            },
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["twitter"]["success"] is True
+
+        post_call = mock_instance.post.call_args
+        kwargs = post_call.kwargs
+        assert "images_by_part" in kwargs
+        assert len(kwargs["images_by_part"][0]) == 2
+
     def test_post_invalid_image(self, client):
         resp = client.post(
             "/api/post",
@@ -169,6 +253,34 @@ class TestPost:
         assert resp.status_code == 400
         data = resp.get_json()
         assert "Invalid image" in data["error"]
+
+    @patch("web.routes.TwitterPlatform", autospec=True)
+    def test_post_records_twitter_rate_limit_snapshot(self, MockTwitter, client):
+        mock_instance = MockTwitter.return_value
+        mock_instance.post.return_value = {
+            "success": True,
+            "ids": ["123"],
+            "urls": ["https://x.com/i/web/status/123"],
+            "rate_limit": {
+                "limit": 200,
+                "remaining": 199,
+                "reset_epoch": 4102444800,
+                "reset_in_seconds": 60,
+                "tracked_at_epoch": 4102444740,
+            },
+        }
+
+        post_resp = client.post(
+            "/api/post",
+            data={"text": "Hello world", "platforms": "twitter"},
+        )
+        assert post_resp.status_code == 200
+
+        rl_resp = client.get("/api/rate-limits")
+        assert rl_resp.status_code == 200
+        data = rl_resp.get_json()
+        assert data["twitter"]["limit"] == 200
+        assert data["twitter"]["remaining"] == 199
 
 
 class TestLinkedInOAuth:

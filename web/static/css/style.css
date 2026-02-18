@@ -210,6 +210,21 @@ body {
   flex-wrap: wrap;
 }
 
+.thread-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.thread-hint code {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 11px;
+  background: #eef5f3;
+  border: 1px solid #d7e8e4;
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
 .enhance-btn,
 .undo-enhance-btn {
   border: 1px solid #d0e2df;
@@ -579,6 +594,41 @@ body {
   gap: 8px;
 }
 
+.image-index-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.image-index-item {
+  border: 1px solid #d6e6e2;
+  border-radius: 10px;
+  background: #fff;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.image-index-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #e1ece9;
+}
+
+.image-index-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #355f66;
+  background: #eef5f3;
+  border: 1px solid #d7e8e4;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
 #post-btn {
   border: none;
   border-radius: 12px;
@@ -677,6 +727,37 @@ body {
 .status .platform-result.error {
   color: var(--danger);
   background: #ffefec;
+}
+
+.rate-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rate-limit-card {
+  border: 1px solid #d8e5e2;
+  border-radius: 10px;
+  background: #f8fbfa;
+  padding: 8px 10px;
+}
+
+.rate-limit-card.unlocked {
+  border-color: #bfe4d2;
+  background: #f4fbf7;
+}
+
+.rate-limit-card.locked {
+  border-color: #f3c7bf;
+  background: #fff5f3;
+}
+
+.rate-limit-title {
+  font-weight: 700;
+  color: #355f66;
 }
 
 .tabs {
@@ -851,6 +932,19 @@ body {
   width: 100%;
   border-radius: 14px;
   margin-bottom: 10px;
+}
+
+.preview-image-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.preview-image-grid .twitter-image,
+.preview-image-grid .bluesky-image,
+.preview-image-grid .linkedin-image {
+  margin-bottom: 0;
 }
 
 .twitter-actions,

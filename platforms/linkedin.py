@@ -12,6 +12,7 @@ from typing import Optional
 from pathlib import Path
 
 import requests
+from core.text_normalizer import normalize_linkedin_text
 
 # LinkedIn API version in YYYYMM format
 LINKEDIN_API_VERSION = "202601"
@@ -206,9 +207,22 @@ class LinkedInPlatform:
         self._save_tokens()
         return True
 
-    def post(self, parts: list[str], image_bytes: Optional[bytes] = None) -> dict:
+    def post(
+        self,
+        parts: list[str],
+        image_bytes: Optional[bytes] = None,
+        image_bytes_list: Optional[list[bytes]] = None,
+        images_by_part: Optional[list[list[bytes]]] = None,
+        mode: str = "auto",
+    ) -> dict:
         """Post to LinkedIn using the Posts API. Parts are joined (no thread support)."""
-        full_text = "\n\n".join(parts)
+        full_text = normalize_linkedin_text("\n\n".join(parts))
+        _ = mode  # reserved for result metadata and debugging
+        images = image_bytes_list if image_bytes_list is not None else (
+            [image_bytes] if image_bytes else []
+        )
+        if images_by_part is not None:
+            images = [img for group in images_by_part for img in group]
 
         if not self.access_token:
             return {"success": False, "error": "No access token. Run OAuth flow first."}
@@ -229,8 +243,8 @@ class LinkedInPlatform:
                 "isReshareDisabledByAuthor": False,
             }
 
-            if image_bytes:
-                image_urn = self._upload_image(image_bytes)
+            if images:
+                image_urn = self._upload_image(images[0])
                 if image_urn:
                     payload["content"] = {
                         "media": {

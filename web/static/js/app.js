@@ -14,6 +14,7 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
   const imageDropzoneHint = document.getElementById("image-dropzone-hint");
   const imageThumbnailWrap = document.getElementById("image-thumbnail-wrap");
   const imageThumbnail = document.getElementById("image-thumbnail");
+  const imageIndexStripEl = document.getElementById("image-index-strip");
   const emojiBtn = document.getElementById("emoji-btn");
   const emojiPicker = document.getElementById("emoji-picker");
   const previewContent = document.getElementById("preview-content");
@@ -23,15 +24,17 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
   const enhanceBtn = document.getElementById("enhance-btn");
   const undoEnhanceBtn = document.getElementById("undo-enhance-btn");
   const enhanceStateEl = document.getElementById("enhance-state");
+  const rateLimitsEl = document.getElementById("rate-limits");
 
   let activeTab = "twitter";
   let previewData = {};
   let debounceTimer = null;
-  let selectedFile = null;
-  let imagePreviewUrl = null;
+  let selectedFiles = [];
+  let imagePreviewUrls = [];
   let saveDraftTimer = null;
   let previousTextBeforeEnhance = "";
   let isEnhancing = false;
+  let latestRateLimits = {};
   let userProfile = {
     displayName: "Your Name",
     twitterHandle: "@you",
@@ -45,6 +48,11 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     linkedin: "LinkedIn",
   };
   const DRAFT_KEY = "cross-poster-draft-v1";
+  const MAX_IMAGES_BY_PLATFORM = {
+    twitter: 4,
+    bluesky: 4,
+    linkedin: 1,
+  };
 
   // --- SVG Icons ---
   const ICONS = {
@@ -91,6 +99,7 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
         }
       }
     });
+    updateTabRateLockIndicators();
   }
 
   function setActiveTab(platform) {
@@ -275,6 +284,118 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     postBtn.disabled = !(hasText && hasPlatforms);
   }
 
+  function formatReset(seconds) {
+    if (typeof seconds !== "number" || Number.isNaN(seconds)) return "unknown";
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.max(0, seconds % 60);
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  function formatResetClock(resetEpoch) {
+    if (typeof resetEpoch !== "number" || Number.isNaN(resetEpoch)) return "unknown";
+    return new Date(resetEpoch * 1000).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function normalizeRateLimitSnapshot(data) {
+    if (!data) return null;
+    return data.rate_limit || data;
+  }
+
+  function getPostability(snapshot) {
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const resetEpochRaw = snapshot && snapshot.reset_epoch;
+    const resetEpoch = Number.isFinite(Number(resetEpochRaw)) ? Number(resetEpochRaw) : null;
+    const remainingRaw = snapshot && snapshot.remaining;
+    const remaining = Number.isFinite(Number(remainingRaw)) ? Number(remainingRaw) : null;
+    const resetExpired = resetEpoch !== null && nowEpoch >= resetEpoch;
+
+    if (resetExpired) return { canPost: true, emoji: "🔓", label: "Unlocked" };
+    if (remaining !== null && remaining <= 0) return { canPost: false, emoji: "🔒", label: "Locked" };
+    if (remaining !== null && remaining > 0) return { canPost: true, emoji: "🔓", label: "Unlocked" };
+    return { canPost: true, emoji: "🔓", label: "Likely unlocked" };
+  }
+
+  function setRateLimits(rateLimits) {
+    latestRateLimits = rateLimits || {};
+    renderRateLimits(latestRateLimits);
+    updateTabRateLockIndicators();
+  }
+
+  function updateTabRateLockIndicators() {
+    tabsContainer.querySelectorAll(".tab").forEach((tab) => {
+      const platform = tab.dataset.platform;
+      const baseLabel = PLATFORM_LABELS[platform] || platform;
+      const snapshot = normalizeRateLimitSnapshot(latestRateLimits[platform]);
+      if (!snapshot) {
+        tab.textContent = baseLabel;
+        return;
+      }
+      const postability = getPostability(snapshot);
+      tab.textContent = `${postability.emoji} ${baseLabel}`;
+    });
+  }
+
+  function renderRateLimits(rateLimits) {
+    if (!rateLimitsEl) return;
+    const entries = Object.entries(rateLimits || {});
+    if (!entries.length) {
+      rateLimitsEl.innerHTML = "";
+      return;
+    }
+
+    const cards = entries
+      .map(([platform, data]) => {
+        if (!data) return "";
+        const snapshot = normalizeRateLimitSnapshot(data);
+        if (!snapshot) return "";
+        const hasAnyField = ["remaining", "limit", "reset_in_seconds", "reset_epoch"].some(
+          (key) => snapshot[key] !== undefined && snapshot[key] !== null
+        );
+        if (!hasAnyField) return "";
+
+        const nowEpoch = Math.floor(Date.now() / 1000);
+        const resetEpochRaw = snapshot.reset_epoch;
+        const resetEpoch = Number.isFinite(Number(resetEpochRaw)) ? Number(resetEpochRaw) : null;
+        const resetIn = resetEpoch !== null
+          ? Math.max(0, resetEpoch - nowEpoch)
+          : snapshot.reset_in_seconds;
+        const isExpired = resetEpoch !== null && resetIn === 0;
+        const postability = getPostability(snapshot);
+        const lockClass = postability.canPost ? "unlocked" : "locked";
+
+        const label = PLATFORM_LABELS[platform] || platform;
+        const remaining = snapshot.remaining ?? "?";
+        const limit = snapshot.limit ?? "?";
+        const resetAt = formatResetClock(resetEpoch);
+        const resetStatus = isExpired
+          ? `Expired (reset was at ${resetAt})`
+          : `Window resets in ${formatReset(resetIn)} (at ${resetAt})`;
+        return `<div class="rate-limit-card ${lockClass}">
+          <div class="rate-limit-title">${postability.emoji} ${escapeHtml(label)} API rate limit (${escapeHtml(postability.label)})</div>
+          <div>Remaining: <strong>${escapeHtml(String(remaining))}/${escapeHtml(String(limit))}</strong> · <strong>${escapeHtml(resetStatus)}</strong></div>
+        </div>`;
+      })
+      .filter(Boolean)
+      .join("");
+
+    rateLimitsEl.innerHTML = cards;
+  }
+
+  function refreshRateLimits() {
+    if (!rateLimitsEl) return;
+    fetch("/api/rate-limits")
+      .then((r) => r.json())
+      .then((data) => {
+        setRateLimits(data);
+      })
+      .catch(() => {});
+  }
+
   function setEnhanceState(message, isError) {
     enhanceStateEl.textContent = message || "";
     enhanceStateEl.classList.toggle("error", Boolean(isError));
@@ -351,7 +472,7 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     fetch("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, platforms }),
+      body: JSON.stringify({ text, platforms, imageCount: selectedFiles.length }),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -395,29 +516,46 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     }
 
     const parts = d.parts;
+    const previewPostCount = activeTab === "linkedin" ? 1 : parts.length;
     let html = "";
 
     if (d.limit !== null) {
-      html += `<div class="preview-info">${d.count}/${d.limit} chars &middot; ${parts.length} post${parts.length > 1 ? "s" : ""}</div>`;
+      html += `<div class="preview-info">${d.count}/${d.limit} chars &middot; ${previewPostCount} post${previewPostCount > 1 ? "s" : ""}</div>`;
     } else {
       html += `<div class="preview-info">${d.count} chars &middot; No limit</div>`;
     }
+    if (d.mode === "manual") {
+      html += '<div class="preview-info">Manual mode active (`---` separators + `[imgN]` tags)</div>';
+    }
 
     if (activeTab === "twitter") {
-      html += renderTwitterCards(parts);
+      html += renderTwitterCards(parts, d);
     } else if (activeTab === "bluesky") {
-      html += renderBlueskyCards(parts);
+      html += renderBlueskyCards(parts, d);
     } else if (activeTab === "linkedin") {
-      html += renderLinkedInCards(parts);
+      html += renderLinkedInCards(parts, d);
     }
 
     previewContent.innerHTML = html;
   }
 
-  function renderTwitterCards(parts) {
+  function getPreviewUrlsForPart(platformKey, previewDatum, partIndex) {
+    const cap = MAX_IMAGES_BY_PLATFORM[platformKey] || 1;
+    const refsByPart = (previewDatum && previewDatum.image_refs) || null;
+    if (!refsByPart || !Array.isArray(refsByPart) || !Array.isArray(refsByPart[partIndex])) {
+      return partIndex === 0 ? imagePreviewUrls.slice(0, cap) : [];
+    }
+    return refsByPart[partIndex]
+      .slice(0, cap)
+      .map((idx) => imagePreviewUrls[idx])
+      .filter(Boolean);
+  }
+
+  function renderTwitterCards(parts, previewDatum) {
     let html = '<div class="twitter-thread">';
     for (let i = 0; i < parts.length; i++) {
       const showConnector = i < parts.length - 1;
+      const twitterPreviewUrls = getPreviewUrlsForPart("twitter", previewDatum, i);
       html += `<div class="twitter-card">
         <div class="twitter-avatar-col">
           <div class="twitter-avatar"></div>
@@ -429,7 +567,7 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
             <span class="twitter-handle">&middot; ${escapeHtml(userProfile.twitterHandle)} &middot; now</span>
           </div>
           <div class="twitter-body">${escapeHtml(parts[i])}</div>
-          ${i === 0 && imagePreviewUrl ? `<img class="twitter-image" src="${imagePreviewUrl}">` : ""}
+          ${renderPreviewImages(twitterPreviewUrls, "twitter-image")}
           <div class="twitter-actions">
             <span class="twitter-action">${ICONS.reply}</span>
             <span class="twitter-action">${ICONS.retweet}</span>
@@ -443,10 +581,11 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     return html;
   }
 
-  function renderBlueskyCards(parts) {
+  function renderBlueskyCards(parts, previewDatum) {
     let html = '<div class="bluesky-thread">';
     for (let i = 0; i < parts.length; i++) {
       const showConnector = i < parts.length - 1;
+      const blueskyPreviewUrls = getPreviewUrlsForPart("bluesky", previewDatum, i);
       html += `<div class="bluesky-card">
         <div class="bluesky-avatar-col">
           <div class="bluesky-avatar"></div>
@@ -458,7 +597,7 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
             <span class="bluesky-handle">${escapeHtml(userProfile.blueskyHandle)} &middot; now</span>
           </div>
           <div class="bluesky-body">${escapeHtml(parts[i])}</div>
-          ${i === 0 && imagePreviewUrl ? `<img class="bluesky-image" src="${imagePreviewUrl}">` : ""}
+          ${renderPreviewImages(blueskyPreviewUrls, "bluesky-image")}
           <div class="bluesky-actions">
             <span class="bluesky-action">${ICONS.comment}</span>
             <span class="bluesky-action">${ICONS.repost}</span>
@@ -472,10 +611,26 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     return html;
   }
 
-  function renderLinkedInCards(parts) {
-    let html = '<div class="linkedin-thread">';
-    for (let i = 0; i < parts.length; i++) {
-      html += `<div class="linkedin-card">
+  function getFirstReferencedImageUrl(previewDatum) {
+    const refsByPart = (previewDatum && previewDatum.image_refs) || [];
+    for (const refs of refsByPart) {
+      if (!Array.isArray(refs)) continue;
+      for (const idx of refs) {
+        const url = imagePreviewUrls[idx];
+        if (url) return url;
+      }
+    }
+    return imagePreviewUrls[0] || null;
+  }
+
+  function renderLinkedInCards(parts, previewDatum) {
+    const firstImageUrl = getFirstReferencedImageUrl(previewDatum);
+    const imageHtml = firstImageUrl
+      ? `<div class="preview-image-grid"><img class="linkedin-image" src="${firstImageUrl}"></div>`
+      : "";
+    const bodyText = (parts || []).join("\n\n");
+    return `<div class="linkedin-thread">
+      <div class="linkedin-card">
         <div class="linkedin-header">
           <div class="linkedin-avatar"></div>
           <div class="linkedin-header-text">
@@ -483,8 +638,8 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
             <div class="linkedin-subtitle">${escapeHtml(userProfile.linkedinHeadline)} &middot; now</div>
           </div>
         </div>
-        <div class="linkedin-body">${escapeHtml(parts[i])}</div>
-        ${i === 0 && imagePreviewUrl ? `<img class="linkedin-image" src="${imagePreviewUrl}">` : ""}
+        <div class="linkedin-body">${escapeHtml(bodyText)}</div>
+        ${imageHtml}
         <div class="linkedin-engagement">
           ${ICONS.thumbsup} <span>0</span>
         </div>
@@ -494,10 +649,8 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
           <span class="linkedin-action-btn">${ICONS.repost} Repost</span>
           <span class="linkedin-action-btn">${ICONS.send} Send</span>
         </div>
-      </div>`;
-    }
-    html += "</div>";
-    return html;
+      </div>
+    </div>`;
   }
 
   function escapeHtml(text) {
@@ -506,21 +659,50 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     return div.innerHTML;
   }
 
+  function renderPreviewImages(urls, imgClass) {
+    if (!urls || urls.length === 0) return "";
+    const images = urls
+      .map((url) => `<img class="${imgClass}" src="${url}">`)
+      .join("");
+    return `<div class="preview-image-grid">${images}</div>`;
+  }
+
+  function renderImageIndexStrip() {
+    if (!imageIndexStripEl) return;
+    if (!imagePreviewUrls.length) {
+      imageIndexStripEl.hidden = true;
+      imageIndexStripEl.innerHTML = "";
+      return;
+    }
+
+    const items = imagePreviewUrls
+      .map((url, i) => `<div class="image-index-item">
+        <img class="image-index-thumb" src="${url}" alt="Image ${i + 1}">
+        <span class="image-index-tag">img${i + 1}</span>
+      </div>`)
+      .join("");
+    imageIndexStripEl.innerHTML = items;
+    imageIndexStripEl.hidden = false;
+  }
+
   // --- Image Attachment ---
   function clearSelectedImage() {
-    selectedFile = null;
-    if (imagePreviewUrl) {
-      URL.revokeObjectURL(imagePreviewUrl);
-      imagePreviewUrl = null;
-    }
+    selectedFiles = [];
+    imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    imagePreviewUrls = [];
     imageInput.value = "";
     imageThumbnail.removeAttribute("src");
     imageNameEl.textContent = "";
     imageThumbnailWrap.hidden = true;
+    if (imageIndexStripEl) {
+      imageIndexStripEl.hidden = true;
+      imageIndexStripEl.innerHTML = "";
+    }
     imageDropzone.classList.remove("has-file");
     imageDropzone.classList.remove("drag-over");
-    imageDropzoneHint.textContent = "or click to browse PNG, JPG, or GIF";
+    imageDropzoneHint.textContent = "or click to browse one or more PNG, JPG, or GIF files";
     renderPreview();
+    requestPreview();
   }
 
   function clearComposerAfterSuccessfulPost() {
@@ -539,25 +721,31 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
   }
 
   function setSelectedImage(file) {
-    if (!file || !file.type || !file.type.startsWith("image/")) {
+    const files = Array.isArray(file) ? file : [file];
+    if (!files.length) return;
+    if (files.some((f) => !f || !f.type || !f.type.startsWith("image/"))) {
       statusEl.innerHTML = '<div class="platform-result error">Please choose a valid image file.</div>';
       return;
     }
 
-    selectedFile = file;
-    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
-    imagePreviewUrl = URL.createObjectURL(file);
-    imageNameEl.textContent = file.name;
-    imageThumbnail.src = imagePreviewUrl;
+    selectedFiles = files;
+    imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    imagePreviewUrls = selectedFiles.map((f) => URL.createObjectURL(f));
+    imageNameEl.textContent = selectedFiles.length === 1
+      ? selectedFiles[0].name
+      : `${selectedFiles.length} images selected`;
+    imageThumbnail.src = imagePreviewUrls[0];
     imageThumbnailWrap.hidden = false;
     imageDropzone.classList.add("has-file");
-    imageDropzoneHint.textContent = "Drop a new image to replace this one";
+    imageDropzoneHint.textContent = "Drop images to replace current selection";
+    renderImageIndexStrip();
     renderPreview();
+    requestPreview();
   }
 
   imageInput.addEventListener("change", () => {
-    const file = imageInput.files[0];
-    if (file) setSelectedImage(file);
+    const files = Array.from(imageInput.files || []);
+    if (files.length) setSelectedImage(files);
   });
 
   imageDropzone.addEventListener("click", () => {
@@ -591,8 +779,8 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     e.preventDefault();
     e.stopPropagation();
     imageDropzone.classList.remove("drag-over");
-    const file = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files[0] : null;
-    if (file) setSelectedImage(file);
+    const files = e.dataTransfer && e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length) setSelectedImage(files);
   });
 
   clearImageBtn.addEventListener("click", clearSelectedImage);
@@ -609,9 +797,7 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
     const formData = new FormData();
     formData.append("text", text);
     platforms.forEach((p) => formData.append("platforms", p));
-    if (selectedFile) {
-      formData.append("image", selectedFile);
-    }
+    selectedFiles.forEach((file) => formData.append("images", file));
 
     fetch("/api/post", {
       method: "POST",
@@ -634,6 +820,8 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
           }
         }
         statusEl.innerHTML = html;
+        setRateLimits(results);
+        refreshRateLimits();
         if (allSuccess) {
           clearComposerAfterSuccessfulPost();
         } else {
@@ -706,6 +894,11 @@ import { EMOJI_CATEGORIES, EMOJI_KEYWORDS } from "./emoji-data.js";
   updateTabs();
   updatePostBtn();
   requestPreview();
+  refreshRateLimits();
+  setInterval(() => {
+    if (!rateLimitsEl || !Object.keys(latestRateLimits).length) return;
+    renderRateLimits(latestRateLimits);
+  }, 1000);
 
   fetch("/api/profile")
     .then((r) => r.json())
